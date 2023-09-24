@@ -55,23 +55,8 @@ public class MyBot : IChessBot
         return (int)(((_pstValues[squareIndex / 10] >> (6 * (squareIndex % 10))) & 63) - 20) * 8;
     }
 
-    private int Search(Board board, Timer timer, int alpha, int beta, int depth, int ply)
+    private int EvaluateBoard(Board board)
     {
-        var key = board.ZobristKey;
-        var isQuiescenceSearch = depth <= 0;
-        var isNotRoot = ply > 0;
-        var bestScore = int.MinValue;
-
-        // Check for repetition (this is much more important than material and 50-move rule draws)
-        if (isNotRoot && board.IsRepeatedPosition())
-            return 0;
-
-        // Transposition Table lookup
-        if (_transpositionTable.TryGetValue(key, out var entry) && entry.Depth >= depth && (entry.Bound == 3 ||
-                                                                      entry.Bound == 2 && entry.Score >= beta ||
-                                                                      entry.Bound == 1 && entry.Score <= alpha))
-            return entry.Score;
-
         int midgameScore = 0, endgameScore = 0, phase = 0;
 
         foreach (var isWhite in new[] { true, false })
@@ -94,7 +79,28 @@ public class MyBot : IChessBot
         }
 
         var evaluation = (midgameScore * phase + endgameScore * (24 - phase)) / 24 * (board.IsWhiteToMove ? 1 : -1);
-        //var evaluation = EvaluateBoard(board);
+        return evaluation;
+    }
+
+    private int Search(Board board, Timer timer, int alpha, int beta, int depth, int ply)
+    {
+        var key = board.ZobristKey;
+        var isQuiescenceSearch = depth <= 0;
+        var isNotRoot = ply > 0;
+        var bestScore = int.MinValue;
+
+        // Check for repetition (this is much more important than material and 50-move rule draws)
+        if (isNotRoot && board.IsRepeatedPosition())
+            return 0;
+
+        // Transposition Table lookup
+        if (_transpositionTable.TryGetValue(key, out var entry) && entry.Depth >= depth && (entry.Bound == 3 ||
+                                                                      entry.Bound == 2 && entry.Score >= beta ||
+                                                                      entry.Bound == 1 && entry.Score <= alpha))
+            return entry.Score;
+
+        
+        var evaluation = EvaluateBoard(board);
         
         // Quiescence search is in the same function as negamax to save tokens
         if (isQuiescenceSearch)
@@ -184,23 +190,23 @@ public class MyBot : IChessBot
     {
         _bestMoveRoot = Move.NullMove;
 
-        if (board.GameStartFenString == board.GetFenString())
+        /*if (board.GameStartFenString == board.GetFenString())
         {
             return board.GetLegalMoves()[15];
-        }
+        }*/
         
         var score = 0;
 
         // Iterative Deepening
         for (int depth = 5; depth <= 50; depth++)
         {
-            score = Search(board, timer, -30000, 30000, depth, 0);
+            score = Search(board, timer, -50000, 50000, depth, 0);
 
             // Out of time
-            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / 30) break;
+            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining ) break;
         }
 
-        //Console.WriteLine("Best " + _bestMoveRoot + ", Score: " + score);
+        Console.WriteLine("Best " + _bestMoveRoot + ", Score: " + score);
         return _bestMoveRoot.IsNull ? board.GetLegalMoves()[0] : _bestMoveRoot;
     }
 }
