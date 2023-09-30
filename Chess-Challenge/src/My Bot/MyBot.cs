@@ -7,7 +7,7 @@ public class MyBot : IChessBot
     private Move _bestMoveRoot = Move.NullMove;
 
     // Piece values for evaluation
-    private readonly int[] _pieceValues = { 0, 100, 310, 330, 500, 1000, 10000 };
+    private readonly int[] _pieceValues = { 0, 100, 330, 360, 500, 1000, 10000 };
 
     private readonly int[] _piecePhase = { 0, 0, 1, 1, 2, 4, 0 };
 
@@ -69,8 +69,11 @@ public class MyBot : IChessBot
                 {
                     phase += _piecePhase[piece];
                     index = (128 * (piece - 1) + BitboardHelper.ClearAndGetIndexOfLSB(ref mask)) ^ (isWhite ? 56 : 0);
-                    midgameScore += GetPieceSquareTableValue(index) + _pieceValues[piece];
-                    endgameScore += GetPieceSquareTableValue(index + 64) + _pieceValues[piece];
+
+                    int pieceValue = _pieceValues[piece];
+                    
+                    midgameScore += GetPieceSquareTableValue(index) + pieceValue;
+                    endgameScore += GetPieceSquareTableValue(index + 64) + pieceValue;
                 }
             }
 
@@ -78,19 +81,17 @@ public class MyBot : IChessBot
             endgameScore = -endgameScore;
         }
 
-        var evaluation = (midgameScore * phase + endgameScore * (24 - phase)) / 24 * (board.IsWhiteToMove ? 1 : -1);
-        return evaluation;
+        return (midgameScore * phase + endgameScore * (24 - phase)) / 24 * (board.IsWhiteToMove ? 1 : -1);
     }
-
+    
     private int Search(Board board, Timer timer, int alpha, int beta, int depth, int ply)
     {
         var key = board.ZobristKey;
         var isQuiescenceSearch = depth <= 0;
-        var isNotRoot = ply > 0;
         var bestScore = int.MinValue;
 
         // Check for repetition (this is much more important than material and 50-move rule draws)
-        if (isNotRoot && board.IsRepeatedPosition())
+        if (ply > 0 && board.IsRepeatedPosition())
             return 0;
 
         // Transposition Table lookup
@@ -139,13 +140,10 @@ public class MyBot : IChessBot
         }
 
         var bestMove = Move.NullMove;
-        var originalAlpha = alpha;
 
         // Search moves
         for (var i = 0; i < moves.Length; i++)
         {
-            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / 30) return 30000;
-
             // Incrementally sort moves
             for (var j = i + 1; j < moves.Length; j++)
                 if (moveScores[j] > moveScores[i])
@@ -171,6 +169,7 @@ public class MyBot : IChessBot
                 if (alpha >= beta) break;
             }
 
+            if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / 30) return evaluation;
             //Console.WriteLine(move + ", Score: " + score);
         }
 
@@ -178,35 +177,40 @@ public class MyBot : IChessBot
         if (!isQuiescenceSearch && moves.Length == 0) return board.IsInCheck() ? -30000 + ply : 0;
 
         // Did we fail high/low or get an exact score?
-        var bound = bestScore >= beta ? 2 : bestScore > originalAlpha ? 3 : 1;
+        var bound = bestScore >= beta ? 2 : bestScore > alpha ? 3 : 1;
 
         // Push to Transposition Table
         _transpositionTable[key] = new TtEntry(bestMove, depth, bestScore, bound);
 
         return bestScore;
     }
-    
+
     public Move Think(Board board, Timer timer)
     {
-        _bestMoveRoot = Move.NullMove;
+        //Console.WriteLine(board.GetFenString());
 
-        /*if (board.GameStartFenString == board.GetFenString())
+        if (board.GetFenString() == "rnbqkbnr/ppp1pppp/8/3p4/8/2N5/PPPPPPPP/R1BQKBNR w KQkq d6 0 2")
         {
-            return board.GetLegalMoves()[15];
-        }*/
-        
-        var score = 0;
+            return board.GetLegalMoves()[17];
+        }
+
+        if (board.GetFenString() == board.GameStartFenString)
+        {
+            int n = new Random().Next(14, 18);
+            
+            if (n == 17) return board.GetLegalMoves()[6];
+            
+            return board.GetLegalMoves()[n];
+        }
 
         // Iterative Deepening
-        for (int depth = 5; depth <= 50; depth++)
+        for (int depth = 1; depth <= 30; depth++)
         {
-            score = Search(board, timer, -50000, 50000, depth, 0);
-
-            // Out of time
+            Search(board, timer, -50000, 50000, depth, 0);
             if (timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining ) break;
         }
 
-        Console.WriteLine("Best " + _bestMoveRoot + ", Score: " + score);
+        Console.WriteLine("Best " + _bestMoveRoot);
         return _bestMoveRoot.IsNull ? board.GetLegalMoves()[0] : _bestMoveRoot;
     }
 }
